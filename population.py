@@ -190,6 +190,7 @@ class PopulationInOut:
                 df = pd.read_excel(os.path.join(self.before_folder, file))
                 df = df.astype(str)
 
+                print(f"변환완료 : 변환후_{file}")
                 df.to_excel(f"{self.after_folder}/변환후_{file}", index=False)
 
         if not is_file:

@@ -80,7 +80,7 @@ class ChargeLocApi:
 
     def __init__(self):
         # 호출
-        response = self.try_request("전기차충전", self.pollution_url, self.pollution_params)
+        response = self.try_request("전기차충전소", self.pollution_url, self.pollution_params)
         dict_data = xmltodict.parse(response.text)
         rows = dict_data["response"]["body"]["items"]["item"]
 
@@ -109,7 +109,7 @@ class ChargeLocApi:
 
         df = pd.DataFrame(self.df)
         df = df.rename(columns=self.colname_conv)
-        df.to_csv(f"data_after/전기차충전/{self.td}.csv", index=False, encoding='utf-8')
+        df.to_csv(f"data_after/전기차충전소/{self.td}.csv", index=False, encoding='utf-8')
 
     def kakao_api(self,addr):
         '''

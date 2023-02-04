@@ -8,8 +8,6 @@ id.py
 
 pyvenv.cfg
 
-Dockerfile
-
 cheonan
 
 -it
