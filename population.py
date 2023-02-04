@@ -3,6 +3,7 @@ import numpy as np
 import os
 import openpyxl
 import ssl
+import sys
 
 import requests
 from urllib import request
@@ -17,7 +18,6 @@ class PopulationMove:
     before_folder = f"data_before/{folder}"
     after_folder = f"data_after/{folder}"
     year = None
-    month = None
 
     def __init__(self):
         self.year = input("년입력(yyyy) : ")
@@ -28,14 +28,18 @@ class PopulationMove:
 
         files = os.listdir(self.before_folder)
         df = pd.DataFrame()
-        for file in files:
-            print(file)
-            df = pd.concat([df, self.data_trans(self.before_folder + "/" + file, sample_file, d)])
+        is_file=False
 
-        if files:
+        for file in files:
+            if (self.month in file) and (self.month) in file:
+                is_file=True
+                print(file)
+                df = pd.concat([df, self.data_trans(self.before_folder + "/" + file, sample_file, d)])
+
+        if is_file:
             df.to_excel(f"{self.after_folder}/변환후_인구이동통계_{self.year}년_{self.month}월.xlsx", index=False)
         else:
-            print("변환할 파일없음")
+            print(f"변환할 파일({self.year}년 {self.month}월)없음")
 
     def data_trans(self, down_file, sample_file, date):
         def drop_comma(s):
@@ -80,17 +84,19 @@ class PopulationAge:
     after_folder = f"data_after/{folder}"
     year = None
     month = None
+    title = None
+    real_file_name = None
 
     def __init__(self):
         self.year = input("월입력(YYYY) : ")
         self.month = input("월입력(M) : ")
-        title = self.month + "월말 인구"
+        self.title = f"［{self.year}년］{self.month}월말 인구 현황"
 
-        self.crawling_population_age(title)
+        self.crawling_population_age()
         self.data_trans_population_age()
 
 
-    def crawling_population_age(self,title):
+    def crawling_population_age(self):
         '''
         게시글을 크롤링 한다
         '''
@@ -107,7 +113,7 @@ class PopulationAge:
 
         is_file = False
         for l in links:
-            if title in l.text.lstrip().rstrip():
+            if self.title in l.text.lstrip().rstrip():
                 post_url_right = l.a["href"]
                 is_file = True
 
@@ -119,7 +125,8 @@ class PopulationAge:
             for a_f in attach_files:
                 file_name = a_f.text.lstrip().rstrip()
                 if "연령별인구현황" in file_name:
-                    print(file_name)
+                    print(f"크롤링 완료 : {file_name}")
+                    self.real_file_name = file_name
                     start_i = a_f["href"].index("(")
                     params = a_f["href"][start_i + 1:-1]
                     first_param = params.split(",")[0][1:-1]
@@ -127,56 +134,63 @@ class PopulationAge:
 
                     request.urlretrieve(
                         f"https://www.cheonan.go.kr/cmm/fms/FileDown.do?atchFileId={first_param}&fileSn={second_param}",
-                        f"{self.before_folder}/{file_name}")
+                        f"{self.before_folder}/{self.real_file_name}")
         else:
             print("게시물없음")
+            sys.exit()
 
     def data_trans_population_age(self):
         month = self.month.zfill(2)
-        files = os.listdir(self.before_folder)
+        raw_df = pd.read_excel(f"{self.before_folder}/{self.real_file_name}", sheet_name="3. 읍면동별 연령별(5세-세로형)")
 
-        for file in files:
-            raw_df = pd.read_excel(self.before_folder + '/' + file, sheet_name="3. 읍면동별 연령별(5세-세로형)")
+        # 데이터프레임 만들기
+        df1 = raw_df.iloc[1:, [0, 1, 2]].reset_index().drop("index", axis=1)
+        df2 = raw_df.iloc[1:, [7 * i + 4 for i in range(21)]].reset_index().drop("index", axis=1)
+        df_date = pd.DataFrame({"기준일": [f"{self.year}년 {month} 월" for _ in range(len(df1))]}).reset_index().drop(
+            "index", axis=1)
+        df = pd.concat([df_date, df1, df2], axis=1, ignore_index=True)
 
-            # 데이터프레임 만들기
-            df1 = raw_df.iloc[1:, [0, 1, 2]].reset_index().drop("index", axis=1)
-            df2 = raw_df.iloc[1:, [7 * i + 4 for i in range(21)]].reset_index().drop("index", axis=1)
-            df_date = pd.DataFrame({"기준일": [f"{self.year}년 {month} 월" for _ in range(len(df1))]}).reset_index().drop(
-                "index", axis=1)
-            df = pd.concat([df_date, df1, df2], axis=1, ignore_index=True)
+        # 컬럼만들기
+        cols = list(df.loc[0])
+        cols[0] = "기준일"
+        cols[1] = "읍면동"
+        cols[2] = "구분"
+        df = df.iloc[1:]
+        df.columns = cols
 
-            # 컬럼만들기
-            cols = list(df.loc[0])
-            cols[0] = "기준일"
-            cols[1] = "읍면동"
-            cols[2] = "구분"
-            df = df.iloc[1:]
-            df.columns = cols
+        now_loc = ""
+        for i in range(1, len(df) + 1):
+            if type(df["읍면동"][i]) is str:
+                now_loc = df["읍면동"][i].replace(" ", "")
+                df["읍면동"][i] = now_loc
+            else:
+                df["읍면동"][i] = now_loc
 
-            now_loc = ""
-            for i in range(1, len(df) + 1):
-                if type(df["읍면동"][i]) is str:
-                    now_loc = df["읍면동"][i].replace(" ", "")
-                    df["읍면동"][i] = now_loc
-                else:
-                    df["읍면동"][i] = now_loc
+        df = df[(df["읍면동"] != "천안시") &
+                (df["읍면동"] != "동남구") &
+                (df["읍면동"] != "서북구")]
 
-            df = df[(df["읍면동"] != "천안시") &
-                    (df["읍면동"] != "동남구") &
-                    (df["읍면동"] != "서북구")]
-
-            df.to_excel(f"{self.after_folder}/변환후_{file}", index=False)
+        print(f"파일 변환 완료 : 변환후_{self.real_file_name}")
+        df.to_excel(f"{self.after_folder}/변환후_{self.real_file_name}", index=False)
 
 class PopulationInOut:
     folder = "전입전출현황"
     before_folder = f"data_before/{folder}"
     after_folder = f"data_after/{folder}"
 
+
     def __init__(self):
         files = os.listdir(self.before_folder)
-
+        self.year = input("년입력(yyyy) : ")
+        self.month = input("월입력(M) : ")
+        is_file=False
         for file in files:
-            df = pd.read_excel(os.path.join(self.before_folder, file))
-            df = df.astype(str)
+            if (self.year in file) and (self.month in file):
+                is_file=True
+                df = pd.read_excel(os.path.join(self.before_folder, file))
+                df = df.astype(str)
 
-            df.to_excel(f"{self.after_folder}/변환후_{file}", index=False)
+                df.to_excel(f"{self.after_folder}/변환후_{file}", index=False)
+
+        if not is_file:
+            print("변환할 파일 없음")

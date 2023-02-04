@@ -7,3 +7,11 @@ id.py
 /lib/
 
 pyvenv.cfg
+
+Dockerfile
+
+cheonan
+
+-it
+
+-v
